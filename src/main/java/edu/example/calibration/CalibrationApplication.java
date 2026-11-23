@@ -1,0 +1,17 @@
+package edu.example.calibration;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.jms.annotation.EnableJms;
+
+@SpringBootApplication
+@EnableAsync
+@EnableScheduling
+@EnableJms
+public class CalibrationApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(CalibrationApplication.class, args);
+    }
+}

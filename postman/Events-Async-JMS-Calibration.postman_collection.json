@@ -1,0 +1,342 @@
+{
+  "info": {
+    "name": "Events, Async & JMS Calibration (Spring Boot 4)",
+    "_postman_id": "bb0682d7-fdf7-423e-9128-f56e975cca10",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Run in order; retry async and JMS GET requests to observe eventual completion."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "enrollmentId",
+      "value": "1"
+    },
+    {
+      "key": "jobId",
+      "value": ""
+    },
+    {
+      "key": "messageId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Task 1 - Commit enrollment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/enrollments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "enrollments"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"studentId\": \"alice\",\n  \"courseId\": \"JAVA-21\",\n  \"forceRollback\": false\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"201 committed\", () => pm.response.to.have.status(201));",
+              "const data = pm.response.json();",
+              "pm.test(\"Committed\", () => pm.expect(data.status).to.eql(\"COMMITTED\"));",
+              "pm.collectionVariables.set(\"enrollmentId\", data.enrollmentId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Task 1 - View listener order and confirmation",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/enrollments/{{enrollmentId}}/side-effects",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "enrollments",
+            "{{enrollmentId}}",
+            "side-effects"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.test(\"Confirmation persisted\", () => pm.expect(data.confirmation.enrollmentId).to.eql(Number(pm.collectionVariables.get(\"enrollmentId\"))));",
+              "pm.test(\"Ordered listeners\", () => pm.expect(data.listenerExecutions.map(x => x.listenerName)).to.eql([\"CONFIRMATION\", \"JMS_PUBLISH\"]));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Task 2 - Force rollback (no side-effects)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/enrollments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "enrollments"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"studentId\": \"rollback-alice\",\n  \"courseId\": \"SQL-101\",\n  \"forceRollback\": true\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"409 transaction rolled back\", () => pm.response.to.have.status(409));",
+              "pm.test(\"No enrollment committed\", () => pm.expect(pm.response.json().status).to.eql(\"ROLLED_BACK\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Task 3 - Start slow async job",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/async/jobs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "async",
+            "jobs"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+              "const data = pm.response.json();",
+              "pm.collectionVariables.set(\"jobId\", data.jobId);",
+              "pm.test(\"Job submitted\", () => pm.expect(data.status).to.eql(\"SUBMITTED\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Task 3 - Read async status (retry after 1 second)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/async/jobs/{{jobId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "async",
+            "jobs",
+            "{{jobId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "if (data.result === \"COMPLETED\") {",
+              " pm.test(\"Ran on named worker pool\", () => pm.expect(data.executedOnThread).to.match(/^calibration-async-/));",
+              "} else { console.log(\"Still RUNNING; retry this request in a second\"); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Task 4 - Send JMS message with first-attempt failure",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/messages",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "messages"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"studentId\": \"jms-alice\",\n  \"courseId\": \"JMS-101\",\n  \"enrollmentId\": 472,\n  \"failFirstAttempt\": true\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"202 queued\", () => pm.response.to.have.status(202));",
+              "pm.collectionVariables.set(\"messageId\", pm.response.json().messageId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Task 4 - Inspect JMS delivery attempts (retry after 1 second)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/messages/{{messageId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "messages",
+            "{{messageId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "if (data.received) {",
+              " pm.test(\"Every JMS field preserved\", () => {",
+              "   pm.expect(data.received.studentId).to.eql(\"jms-alice\");",
+              "   pm.expect(data.received.courseId).to.eql(\"JMS-101\");",
+              "   pm.expect(data.received.enrollmentId).to.eql(472);",
+              "   pm.expect(data.received.failFirstAttempt).to.eql(true);",
+              "   pm.expect(data.received.messageId).to.eql(data.messageId);",
+              " });",
+              " pm.test(\"JMS redelivered\", () => {",
+              "   pm.expect(data.attempts[0].outcome).to.eql(\"FAILED\");",
+              "   pm.expect(data.attempts[data.attempts.length-1].outcome).to.eql(\"SUCCESS\");",
+              "   pm.expect(data.attempts.length).to.be.at.least(2);",
+              " });",
+              "} else { console.log(\"JMS message not consumed yet; retry GET\"); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Task 5 - Read scheduler status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/scheduled/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "scheduled",
+            "status"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Run count is numeric\", () => pm.expect(pm.response.json().runCount).to.be.a(\"number\"));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

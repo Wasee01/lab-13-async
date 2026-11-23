@@ -1,0 +1,30 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: localroot
+      MYSQL_DATABASE: events_calibration
+      MYSQL_USER: calibration
+      MYSQL_PASSWORD: calibration
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_events_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  artemis:
+    image: apache/artemis:latest-alpine
+    environment:
+      ARTEMIS_USER: artemis
+      ARTEMIS_PASSWORD: artemis
+    ports:
+      - "61616:61616"
+      - "8161:8161"
+    volumes:
+      - artemis_events_data:/var/lib/artemis-instance
+volumes:
+  mysql_events_data:
+  artemis_events_data:

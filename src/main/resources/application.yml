@@ -1,0 +1,21 @@
+server:
+  port: 8080
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3307/events_calibration?createDatabaseIfNotExist=true}
+    username: ${DB_USERNAME:calibration}
+    password: ${DB_PASSWORD:calibration}
+  jpa:
+    hibernate:
+      ddl-auto: update # Teaching demo only; replace with Flyway for production
+    open-in-view: false
+  artemis:
+    mode: native
+    broker-url: ${ARTEMIS_URL:tcp://localhost:61616}
+    user: ${ARTEMIS_USER:artemis}
+    password: ${ARTEMIS_PASSWORD:artemis}
+calibration:
+  jms:
+    destination: enrollment.confirmations
+  cleanup:
+    cron: ${CALIBRATION_CLEANUP_CRON:0 * * * * *}
